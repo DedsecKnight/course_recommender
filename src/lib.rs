@@ -43,14 +43,14 @@ pub mod nebula {
         for (u, v, edge_type) in course_graph.edges() {
             match edge_type {
                 EdgeType::PREREQUISITE => {
-                    prereq_adj[v.to_owned()].push(u.clone());
-                    prereq_init_degree[u.to_owned()] += 1;
-                    prereq_degree[u.to_owned()] += 1;
+                    prereq_adj[v.to_owned()].push(*u);
+                    prereq_init_degree[*u] += 1;
+                    prereq_degree[*u] += 1;
                 }
                 EdgeType::COREQUISITE => {
-                    coreq_adj[v.to_owned()].push(u.clone());
-                    coreq_init_degree[u.to_owned()] += 1;
-                    coreq_degree[u.to_owned()] += 1;
+                    coreq_adj[v.to_owned()].push(*u);
+                    coreq_init_degree[*u] += 1;
+                    coreq_degree[*u] += 1;
                 }
             }
         }
@@ -110,9 +110,9 @@ pub mod nebula {
                     && prereq_degree[prereq_pred.to_owned()] == 0
                     && coreq_degree[prereq_pred.to_owned()] == 0
                 {
-                    if course_set.contains(&prereq_pred) {
+                    if course_set.contains(prereq_pred) {
                         queue.push_back(prereq_pred.to_owned());
-                        course_set.remove(&prereq_pred);
+                        course_set.remove(prereq_pred);
                     }
                 } else if !course_graph.is_course_node(*prereq_pred)
                     && course_graph
@@ -134,9 +134,9 @@ pub mod nebula {
                     && prereq_degree[coreq_pred.to_owned()] == 0
                     && coreq_degree[coreq_pred.to_owned()] == 0
                 {
-                    if course_set.contains(&coreq_pred) {
+                    if course_set.contains(coreq_pred) {
                         queue.push_back(coreq_pred.to_owned());
-                        course_set.remove(&coreq_pred);
+                        course_set.remove(coreq_pred);
                     }
                 } else if !course_graph.is_course_node(*coreq_pred)
                     && course_graph
@@ -150,7 +150,10 @@ pub mod nebula {
         }
 
         if !course_set.is_empty() {
+            let mut invalid_courses = String::from("");
             for course in course_set.iter() {
+                invalid_courses.push_str(course_graph.get_course(*course).unwrap().name());
+                invalid_courses.push_str(", ");
                 println!(
                     "{} {} {}",
                     course_graph.get_course(*course).unwrap().name(),
@@ -158,7 +161,12 @@ pub mod nebula {
                     coreq_degree[*course]
                 );
             }
-            Err(String::from("Invalid course degree"))
+            invalid_courses.pop();
+            invalid_courses.pop();
+            Err(format!(
+                "Did not fulfill pre/corequisites for the following courses: {}",
+                invalid_courses
+            ))
         } else {
             Ok(())
         }

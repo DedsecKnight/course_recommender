@@ -17,6 +17,7 @@ pub struct CourseGraph {
     requirements: HashMap<usize, Requirement>,
     edges: Vec<(usize, usize, EdgeType)>,
     id_to_course_index: HashMap<ObjectId, usize>,
+    course_name_to_index: HashMap<String, usize>,
 }
 
 impl CourseGraph {
@@ -32,6 +33,9 @@ impl CourseGraph {
     pub fn get_requirement(&self, course_id: usize) -> Option<&Requirement> {
         self.requirements.get(&course_id)
     }
+    pub fn is_course_node(&self, id: usize) -> bool {
+        self.courses.contains_key(&id)
+    }
     pub fn new() -> Self {
         Self {
             graph_size: 0,
@@ -39,11 +43,14 @@ impl CourseGraph {
             edges: vec![],
             requirements: HashMap::new(),
             id_to_course_index: HashMap::new(),
+            course_name_to_index: HashMap::new(),
         }
     }
     fn add_course(&mut self, course: &NebulaCourse) -> usize {
         self.courses
             .insert(self.graph_size, Course::new(course.name()));
+        self.course_name_to_index
+            .insert(course.name(), self.graph_size);
         self.id_to_course_index
             .insert(course.id.unwrap(), self.graph_size);
         self.graph_size += 1;
@@ -113,6 +120,10 @@ impl CourseGraph {
             }
         }
         graph
+    }
+
+    pub fn find_course_by_name(&self, course_name: &str) -> Option<usize> {
+        self.course_name_to_index.get(course_name).copied()
     }
 }
 

@@ -182,6 +182,9 @@ pub mod nebula {
                     if !g.course_group_satisfied(course_index, &semester_set)
                         || indegree[course_index.index()] > 0
                     {
+                        return Err(format!("Found course with unsatisfied group: {}", &course));
+                    }
+                    if indegree[course_index.index()] > 0 {
                         return Err(format!(
                             "Found course with unfulfilled pre/corequisite: {} (Need {} more requirement(s))",
                             &course,

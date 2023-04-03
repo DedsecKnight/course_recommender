@@ -16,8 +16,9 @@ impl Course {
     }
     pub fn course_key(&self) -> String {
         format!(
-            "{}_{}",
+            "{}_{}{}",
             &self.subject_prefix,
+            &self.course_number[0..1],
             &self.course_number[self.course_number.len() - 2..]
         )
     }

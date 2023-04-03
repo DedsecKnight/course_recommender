@@ -189,7 +189,7 @@ impl CourseGraph {
                 return true;
             }
         }
-        return false;
+        return self.course_group.get(&node_key).unwrap().len() == 1;
     }
     pub fn requirement_satisfied(&self, node_index: NodeIndex, remain_degree: usize) -> bool {
         let init_degree = self

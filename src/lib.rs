@@ -2,11 +2,13 @@ pub mod routes;
 pub mod utils;
 
 pub mod nebula {
-    use std::collections::{HashSet, VecDeque};
+    use std::collections::VecDeque;
+
+    use petgraph::{graph::NodeIndex, Direction};
 
     use crate::utils::{
         db,
-        graph::{CourseGraph, EdgeType},
+        graph::{CourseGraph, EdgeType, VertexType},
         nebula::NebulaCourse,
     };
     pub fn fetch_courses() -> Vec<NebulaCourse> {
@@ -19,156 +21,171 @@ pub mod nebula {
             .collect()
     }
     pub fn validate_degree(
-        taken_courses: &Vec<String>,
-        course_graph: &CourseGraph,
+        taken_courses: &Vec<Vec<String>>,
+        bypasses: &Vec<String>,
+        g: &CourseGraph,
     ) -> Result<(), String> {
-        let mut course_set: HashSet<usize> = HashSet::new();
-        for course in taken_courses {
-            if let Some(course_index) = course_graph.find_course_by_name(course) {
-                course_set.insert(course_index);
+        #[derive(PartialEq, Eq, PartialOrd, Ord, Copy, Clone)]
+        enum NodeState {
+            PREREQUISITE,
+            COREQUISITE,
+            NEITHER,
+        }
+        let mut q: VecDeque<(NodeIndex, NodeState)> = VecDeque::new();
+        let mut indegree: Vec<usize> = g
+            .graph()
+            .node_indices()
+            .map(|x| g.graph().neighbors_directed(x, Direction::Incoming).count())
+            .collect();
+        let mut fulfilled: Vec<bool> = vec![false; g.size()];
+
+        for course in bypasses {
+            if let Some(course_index) = g.find_course_by_name(course) {
+                indegree[course_index.index()] = 0;
+                fulfilled[course_index.index()] = true;
+                q.push_back((course_index, NodeState::NEITHER));
             } else {
                 return Err(format!("Invalid course found: {}", course));
             }
         }
 
-        let mut prereq_adj: Vec<Vec<usize>> = vec![vec![]; course_graph.size()];
-        let mut coreq_adj: Vec<Vec<usize>> = vec![vec![]; course_graph.size()];
-
-        let mut prereq_init_degree: Vec<i32> = vec![0; course_graph.size()];
-        let mut coreq_init_degree: Vec<i32> = vec![0; course_graph.size()];
-
-        let mut prereq_degree: Vec<i32> = vec![0; course_graph.size()];
-        let mut coreq_degree: Vec<i32> = vec![0; course_graph.size()];
-
-        for (u, v, edge_type) in course_graph.edges() {
-            match edge_type {
-                EdgeType::PREREQUISITE => {
-                    prereq_adj[v.to_owned()].push(*u);
-                    prereq_init_degree[*u] += 1;
-                    prereq_degree[*u] += 1;
-                }
-                EdgeType::COREQUISITE => {
-                    coreq_adj[v.to_owned()].push(*u);
-                    coreq_init_degree[*u] += 1;
-                    coreq_degree[*u] += 1;
-                }
-            }
-        }
-
-        let mut queue: VecDeque<usize> = VecDeque::new();
-
-        for i in 0usize..course_graph.size() {
-            if !course_graph.is_course_node(i) && prereq_degree[i] == 0 && coreq_degree[i] == 0 {
-                queue.push_back(i);
-            }
-        }
-
-        while !queue.is_empty() {
-            let current_node = queue.pop_front().unwrap();
-            for prereq_pred in &prereq_adj[current_node] {
-                prereq_degree[prereq_pred.to_owned()] -= 1;
-                // do something else here
-                if !course_graph.is_course_node(*prereq_pred)
-                    && course_graph
-                        .get_requirement(*prereq_pred)
-                        .unwrap()
-                        .is_satisfied(
-                            prereq_init_degree[*prereq_pred],
-                            prereq_degree[*prereq_pred],
-                        )
-                {
-                    queue.push_back(prereq_pred.to_owned());
-                }
-            }
-
-            for coreq_pred in &coreq_adj[current_node] {
-                coreq_degree[coreq_pred.to_owned()] -= 1;
-                // do something else here
-                if !course_graph.is_course_node(*coreq_pred)
-                    && course_graph
-                        .get_requirement(*coreq_pred)
-                        .unwrap()
-                        .is_satisfied(coreq_init_degree[*coreq_pred], coreq_degree[*coreq_pred])
-                {
-                    queue.push_back(coreq_pred.to_owned());
-                }
-            }
-        }
-
-        for i in 0usize..course_graph.size() {
-            if course_set.contains(&i) && prereq_degree[i] == 0 && coreq_degree[i] == 0 {
-                queue.push_back(i);
-                course_set.remove(&i);
-            }
-        }
-        while !queue.is_empty() {
-            let current_node = queue.pop_front().unwrap();
-            for prereq_pred in &prereq_adj[current_node] {
-                prereq_degree[prereq_pred.to_owned()] -= 1;
-                // do something else here
-                if course_graph.is_course_node(*prereq_pred)
-                    && prereq_degree[prereq_pred.to_owned()] == 0
-                    && coreq_degree[prereq_pred.to_owned()] == 0
-                {
-                    if course_set.contains(prereq_pred) {
-                        queue.push_back(prereq_pred.to_owned());
-                        course_set.remove(prereq_pred);
+        while let Some((curr_node, curr_state)) = q.pop_front() {
+            match curr_state {
+                NodeState::NEITHER => {
+                    assert_eq!(g.node_type(curr_node.index()), VertexType::COURSE);
+                    let mut edges = g
+                        .graph()
+                        .neighbors_directed(curr_node, Direction::Outgoing)
+                        .detach();
+                    while let Some((edge, neighbor)) = edges.next(g.graph()) {
+                        if indegree[neighbor.index()] > 0 {
+                            indegree[neighbor.index()] -= 1;
+                        }
+                        assert_eq!(g.node_type(neighbor.index()), VertexType::REQUIREMENT);
+                        if !fulfilled[neighbor.index()]
+                            && g.requirement_satisfied(neighbor, indegree[neighbor.index()])
+                        {
+                            if g.graph()[edge] == EdgeType::COREQUISITE {
+                                q.push_back((neighbor, NodeState::COREQUISITE));
+                            } else {
+                                q.push_back((neighbor, NodeState::PREREQUISITE));
+                            }
+                            fulfilled[neighbor.index()] = true;
+                            indegree[neighbor.index()] = 0;
+                        }
                     }
-                } else if !course_graph.is_course_node(*prereq_pred)
-                    && course_graph
-                        .get_requirement(*prereq_pred)
-                        .unwrap()
-                        .is_satisfied(
-                            prereq_init_degree[*prereq_pred],
-                            prereq_degree[*prereq_pred],
-                        )
-                {
-                    queue.push_back(prereq_pred.to_owned());
                 }
-            }
-
-            for coreq_pred in &coreq_adj[current_node] {
-                coreq_degree[coreq_pred.to_owned()] -= 1;
-                // do something else here
-                if course_graph.is_course_node(*coreq_pred)
-                    && prereq_degree[coreq_pred.to_owned()] == 0
-                    && coreq_degree[coreq_pred.to_owned()] == 0
-                {
-                    if course_set.contains(coreq_pred) {
-                        queue.push_back(coreq_pred.to_owned());
-                        course_set.remove(coreq_pred);
+                other_state => {
+                    assert_eq!(g.node_type(curr_node.index()), VertexType::REQUIREMENT);
+                    for neighbor in g
+                        .graph()
+                        .neighbors_directed(curr_node, Direction::Outgoing)
+                        .by_ref()
+                    {
+                        if fulfilled[neighbor.index()] {
+                            continue;
+                        }
+                        if indegree[neighbor.index()] > 0 {
+                            indegree[neighbor.index()] -= 1;
+                        }
+                        if g.node_type(neighbor.index()) == VertexType::COURSE
+                            && curr_state == NodeState::COREQUISITE
+                            && indegree[neighbor.index()] == 0
+                        {
+                            q.push_back((neighbor, NodeState::NEITHER));
+                            fulfilled[neighbor.index()] = true;
+                        } else if g.node_type(neighbor.index()) == VertexType::REQUIREMENT
+                            && g.requirement_satisfied(neighbor, indegree[neighbor.index()])
+                        {
+                            q.push_back((neighbor, other_state));
+                            fulfilled[neighbor.index()] = true;
+                            indegree[neighbor.index()] = 0;
+                        }
                     }
-                } else if !course_graph.is_course_node(*coreq_pred)
-                    && course_graph
-                        .get_requirement(*coreq_pred)
-                        .unwrap()
-                        .is_satisfied(prereq_init_degree[*coreq_pred], prereq_degree[*coreq_pred])
-                {
-                    queue.push_back(coreq_pred.to_owned());
                 }
             }
         }
 
-        if !course_set.is_empty() {
-            let mut invalid_courses = String::from("");
-            for course in course_set.iter() {
-                invalid_courses.push_str(course_graph.get_course(*course).unwrap().name());
-                invalid_courses.push_str(", ");
-                println!(
-                    "{} {} {}",
-                    course_graph.get_course(*course).unwrap().name(),
-                    prereq_degree[*course],
-                    coreq_degree[*course]
-                );
+        for semester_set in taken_courses {
+            for course in semester_set {
+                if let Some(course_index) = g.find_course_by_name(course) {
+                    if indegree[course_index.index()] == 0 {
+                        fulfilled[course_index.index()] = true;
+                        q.push_back((course_index, NodeState::NEITHER));
+                    }
+                } else {
+                    return Err(format!("Invalid course found: {}", course));
+                }
             }
-            invalid_courses.pop();
-            invalid_courses.pop();
-            Err(format!(
-                "Did not fulfill pre/corequisites for the following courses: {}",
-                invalid_courses
-            ))
-        } else {
-            Ok(())
+            while let Some((curr_node, curr_state)) = q.pop_front() {
+                match curr_state {
+                    NodeState::NEITHER => {
+                        assert_eq!(g.node_type(curr_node.index()), VertexType::COURSE);
+                        let mut edges = g
+                            .graph()
+                            .neighbors_directed(curr_node, Direction::Outgoing)
+                            .detach();
+                        while let Some((edge, neighbor)) = edges.next(g.graph()) {
+                            if indegree[neighbor.index()] > 0 {
+                                indegree[neighbor.index()] -= 1;
+                            }
+                            assert_eq!(g.node_type(neighbor.index()), VertexType::REQUIREMENT);
+                            if !fulfilled[neighbor.index()]
+                                && g.requirement_satisfied(neighbor, indegree[neighbor.index()])
+                            {
+                                if g.graph()[edge] == EdgeType::COREQUISITE {
+                                    q.push_back((neighbor, NodeState::COREQUISITE));
+                                } else {
+                                    q.push_back((neighbor, NodeState::PREREQUISITE));
+                                }
+                                fulfilled[neighbor.index()] = true;
+                                indegree[neighbor.index()] = 0;
+                            }
+                        }
+                    }
+                    other_state => {
+                        assert_eq!(g.node_type(curr_node.index()), VertexType::REQUIREMENT);
+                        for neighbor in g
+                            .graph()
+                            .neighbors_directed(curr_node, Direction::Outgoing)
+                            .by_ref()
+                        {
+                            if fulfilled[neighbor.index()] {
+                                continue;
+                            }
+                            if indegree[neighbor.index()] > 0 {
+                                indegree[neighbor.index()] -= 1;
+                            }
+                            if g.node_type(neighbor.index()) == VertexType::COURSE
+                                && curr_state == NodeState::COREQUISITE
+                                && indegree[neighbor.index()] == 0
+                            {
+                                q.push_back((neighbor, NodeState::NEITHER));
+                                fulfilled[neighbor.index()] = true;
+                            } else if g.node_type(neighbor.index()) == VertexType::REQUIREMENT
+                                && g.requirement_satisfied(neighbor, indegree[neighbor.index()])
+                            {
+                                q.push_back((neighbor, other_state));
+                                fulfilled[neighbor.index()] = true;
+                                indegree[neighbor.index()] = 0;
+                            }
+                        }
+                    }
+                }
+            }
+            for course in semester_set {
+                if let Some(course_index) = g.find_course_by_name(course) {
+                    if indegree[course_index.index()] > 0 {
+                        return Err(format!(
+                            "Found course with unfulfilled pre/corequisite: {} (Need {} more requirement(s))",
+                            &course,
+                            &indegree[course_index.index()]
+                        ));
+                    }
+                }
+            }
         }
+
+        Ok(())
     }
 }

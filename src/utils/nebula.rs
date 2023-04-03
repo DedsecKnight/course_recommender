@@ -44,6 +44,14 @@ impl NebulaCourse {
     pub fn co_or_pre_requisites(&self) -> &RequirementCollection {
         &self.co_or_pre_requisites
     }
+
+    pub fn course_key(&self) -> String {
+        format!(
+            "{}_{}",
+            &self.subject_prefix,
+            &self.course_number[self.course_number.len() - 2..]
+        )
+    }
 }
 
 impl RequirementCollection {

@@ -1,12 +1,17 @@
-use crate::{nebula::validate_degree, utils::graph::CourseGraph};
+use crate::{
+    nebula::validate_degree,
+    utils::{graph::CourseGraph, semester::SemesterData},
+};
 use rocket::{
     serde::{json::Json, Deserialize, Serialize},
     State,
 };
 
 #[derive(Deserialize, Debug)]
+#[serde(crate = "rocket::serde")]
 pub struct PrereqData {
-    courses: Vec<String>,
+    semester: Vec<SemesterData>,
+    bypasses: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -18,7 +23,9 @@ pub struct PrereqResponse {
 
 #[rocket::post("/", rocket::data = "<payload>")]
 pub fn index(course_graph: &State<CourseGraph>, payload: Json<PrereqData>) -> Json<PrereqResponse> {
-    match validate_degree(&payload.courses, course_graph) {
+    let semester_data: Vec<SemesterData> = payload.semester.clone();
+    let course_sets = semester_data.iter().map(|x| x.courses.clone()).collect();
+    match validate_degree(&course_sets, &payload.bypasses, course_graph) {
         Ok(_) => Json(PrereqResponse {
             is_valid: true,
             invalid_reason: String::from(""),

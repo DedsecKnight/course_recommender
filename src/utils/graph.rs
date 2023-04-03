@@ -5,86 +5,115 @@ use super::nebula::{NebulaCourse, RequirementCollection, RequirementCollectionTy
 use super::requirement::Requirement;
 use std::collections::HashMap;
 
-#[derive(Clone, Copy)]
+use petgraph::graph::{Graph, NodeIndex};
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum EdgeType {
     PREREQUISITE,
     COREQUISITE,
+    SUBREQUIREMENT,
+}
+
+#[derive(PartialEq, Debug)]
+pub enum VertexType {
+    COURSE,
+    REQUIREMENT,
+}
+pub struct CourseGraphBuilder {
+    graph_size: usize,
+    courses: HashMap<NodeIndex, Course>,
+    requirements: HashMap<NodeIndex, Requirement>,
+    graph: Graph<usize, EdgeType>,
+    id_to_course_index: HashMap<ObjectId, NodeIndex>,
+    course_name_to_index: HashMap<String, NodeIndex>,
+    course_group: HashMap<String, Vec<NodeIndex>>,
 }
 
 pub struct CourseGraph {
-    graph_size: usize,
-    courses: HashMap<usize, Course>,
-    requirements: HashMap<usize, Requirement>,
-    edges: Vec<(usize, usize, EdgeType)>,
-    id_to_course_index: HashMap<ObjectId, usize>,
-    course_name_to_index: HashMap<String, usize>,
+    courses: HashMap<NodeIndex, Course>,
+    requirements: HashMap<NodeIndex, Requirement>,
+    course_name_to_index: HashMap<String, NodeIndex>,
+    graph: Graph<usize, EdgeType>,
 }
 
-impl CourseGraph {
-    pub fn size(&self) -> usize {
-        self.graph_size
-    }
-    pub fn edges(&self) -> &Vec<(usize, usize, EdgeType)> {
-        &self.edges
-    }
-    pub fn get_course(&self, course_id: usize) -> Option<&Course> {
-        self.courses.get(&course_id)
-    }
-    pub fn get_requirement(&self, course_id: usize) -> Option<&Requirement> {
-        self.requirements.get(&course_id)
-    }
-    pub fn is_course_node(&self, id: usize) -> bool {
-        self.courses.contains_key(&id)
-    }
-    pub fn new() -> Self {
+impl CourseGraphBuilder {
+    fn new() -> Self {
         Self {
-            graph_size: 0,
+            graph_size: 0usize,
             courses: HashMap::new(),
-            edges: vec![],
+            graph: Graph::new(),
             requirements: HashMap::new(),
             id_to_course_index: HashMap::new(),
             course_name_to_index: HashMap::new(),
+            course_group: HashMap::new(),
         }
     }
-    fn add_course(&mut self, course: &NebulaCourse) -> usize {
-        self.courses
-            .insert(self.graph_size, Course::new(course.name()));
-        self.course_name_to_index
-            .insert(course.name(), self.graph_size);
+    fn add_course(&mut self, course: &NebulaCourse) -> NodeIndex {
+        let node_index = self.graph.add_node(self.graph_size);
+        let course_group_key = course.course_key();
+        self.courses.insert(node_index, Course::new(course.name()));
+        self.course_name_to_index.insert(course.name(), node_index);
+        if !self.course_group.contains_key(&course_group_key) {
+            self.course_group
+                .insert(course_group_key.clone(), vec![node_index]);
+        } else {
+            self.course_group
+                .get_mut(&course_group_key)
+                .unwrap()
+                .push(node_index);
+        }
         self.id_to_course_index
-            .insert(course.id.unwrap(), self.graph_size);
+            .insert(course.id.unwrap(), node_index);
         self.graph_size += 1;
-        self.graph_size - 1
+        node_index
     }
-    fn add_requirement(&mut self, requirement: &RequirementCollection) -> usize {
-        self.requirements.insert(
-            self.graph_size,
-            Requirement::new(requirement.required.unwrap()),
-        );
+    fn add_requirement(&mut self, required_child: u32) -> NodeIndex {
+        let node_index = self.graph.add_node(self.graph_size);
+        self.requirements
+            .insert(node_index, Requirement::new(required_child));
         self.graph_size += 1;
-        self.graph_size - 1
+        node_index
     }
-    fn add_edge(&mut self, source_vertex: usize, dest_vertex: usize, edge_type: EdgeType) {
-        self.edges.push((source_vertex, dest_vertex, edge_type));
-    }
-
     fn parse_requirement(
         &mut self,
         requirement: &RequirementCollection,
-        requirement_type: EdgeType,
-    ) -> Option<usize> {
+        root_course_group: &str,
+    ) -> Option<NodeIndex> {
         if let Some(RequirementCollectionType::COLLECTION) = requirement.requirement_type() {
-            let requirement_node = self.add_requirement(requirement);
+            let mut subrequirement_children: Vec<(NodeIndex, EdgeType)> = vec![];
             for subrequirement in requirement.subrequirements().iter().flatten() {
-                if let Some(subreq_index) = self.parse_requirement(subrequirement, requirement_type)
+                if let Some(subreq_index) =
+                    self.parse_requirement(subrequirement, root_course_group)
                 {
-                    self.add_edge(requirement_node, subreq_index, requirement_type);
+                    subrequirement_children.push((subreq_index, EdgeType::SUBREQUIREMENT));
                 }
             }
-            Some(requirement_node)
+            if subrequirement_children.is_empty() {
+                None
+            } else {
+                let requirement_node = self.add_requirement(std::cmp::min(
+                    subrequirement_children.len(),
+                    requirement.required.unwrap() as usize,
+                ) as u32);
+                for (subreq_index, requirement_type) in subrequirement_children {
+                    self.graph
+                        .add_edge(subreq_index, requirement_node, requirement_type);
+                }
+                Some(requirement_node)
+            }
         } else if let Some(RequirementCollectionType::COURSE) = requirement.requirement_type() {
-            if let Some(course_index) = requirement.class_reference {
-                self.id_to_course_index.get(&course_index).copied()
+            if let Some(course_id) = requirement.class_reference {
+                let course_index = self.id_to_course_index.get(&course_id).unwrap();
+                if self
+                    .course_group
+                    .get(root_course_group)
+                    .unwrap()
+                    .contains(&course_index)
+                {
+                    None
+                } else {
+                    self.id_to_course_index.get(&course_id).copied()
+                }
             } else {
                 None
             }
@@ -92,42 +121,74 @@ impl CourseGraph {
             None
         }
     }
-    pub fn build_from_db(course_database: &Vec<NebulaCourse>) -> Self {
-        let mut graph = Self::default();
+    pub fn build_from_db(course_database: &Vec<NebulaCourse>) -> CourseGraph {
+        let mut g = Self::default();
         for course in course_database {
-            graph.add_course(course);
+            g.add_course(course);
         }
         for course in course_database {
             let course_id = course.id.unwrap();
-            let course_index = graph.id_to_course_index.get(&course_id).unwrap().to_owned();
+            let course_index = g.id_to_course_index.get(&course_id).unwrap().to_owned();
+            let course_key = course.course_key();
 
-            if let Some(prereq_index) =
-                graph.parse_requirement(course.prerequisites(), EdgeType::PREREQUISITE)
-            {
-                graph.add_edge(course_index, prereq_index, EdgeType::PREREQUISITE);
+            if let Some(prereq_index) = g.parse_requirement(course.prerequisites(), &course_key) {
+                g.graph
+                    .add_edge(prereq_index, course_index, EdgeType::PREREQUISITE);
+            }
+
+            if let Some(coreq_index) = g.parse_requirement(course.corequisites(), &course_key) {
+                g.graph
+                    .add_edge(coreq_index, course_index, EdgeType::COREQUISITE);
             }
 
             if let Some(coreq_index) =
-                graph.parse_requirement(course.corequisites(), EdgeType::COREQUISITE)
+                g.parse_requirement(course.co_or_pre_requisites(), &course_key)
             {
-                graph.add_edge(course_index, coreq_index, EdgeType::COREQUISITE);
-            }
-
-            if let Some(coreq_index) =
-                graph.parse_requirement(course.co_or_pre_requisites(), EdgeType::COREQUISITE)
-            {
-                graph.add_edge(course_index, coreq_index, EdgeType::COREQUISITE);
+                g.graph
+                    .add_edge(coreq_index, course_index, EdgeType::COREQUISITE);
             }
         }
-        graph
-    }
 
-    pub fn find_course_by_name(&self, course_name: &str) -> Option<usize> {
-        self.course_name_to_index.get(course_name).copied()
+        CourseGraph {
+            courses: g.courses,
+            requirements: g.requirements,
+            course_name_to_index: g.course_name_to_index,
+            graph: g.graph,
+        }
     }
 }
 
-impl Default for CourseGraph {
+impl CourseGraph {
+    pub fn find_course_by_name(&self, course_name: &str) -> Option<NodeIndex> {
+        self.course_name_to_index.get(course_name).copied()
+    }
+    pub fn graph(&self) -> &Graph<usize, EdgeType> {
+        &self.graph
+    }
+    pub fn size(&self) -> usize {
+        self.graph.node_count()
+    }
+    pub fn node_type(&self, node_index: usize) -> VertexType {
+        let node_key: NodeIndex<u32> = NodeIndex::new(node_index);
+        if self.courses.contains_key(&node_key) {
+            VertexType::COURSE
+        } else {
+            VertexType::REQUIREMENT
+        }
+    }
+    pub fn requirement_satisfied(&self, node_index: NodeIndex, remain_degree: usize) -> bool {
+        let init_degree = self
+            .graph
+            .neighbors_directed(node_index, petgraph::Direction::Incoming)
+            .count();
+        self.requirements
+            .get(&node_index)
+            .unwrap()
+            .is_satisfied(init_degree as u32, remain_degree as u32)
+    }
+}
+
+impl Default for CourseGraphBuilder {
     fn default() -> Self {
         Self::new()
     }

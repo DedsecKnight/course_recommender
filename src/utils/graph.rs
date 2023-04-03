@@ -34,6 +34,7 @@ pub struct CourseGraph {
     requirements: HashMap<NodeIndex, Requirement>,
     course_name_to_index: HashMap<String, NodeIndex>,
     graph: Graph<usize, EdgeType>,
+    course_group: HashMap<String, Vec<NodeIndex>>,
 }
 
 impl CourseGraphBuilder {
@@ -51,7 +52,10 @@ impl CourseGraphBuilder {
     fn add_course(&mut self, course: &NebulaCourse) -> NodeIndex {
         let node_index = self.graph.add_node(self.graph_size);
         let course_group_key = course.course_key();
-        self.courses.insert(node_index, Course::new(course.name()));
+        self.courses.insert(
+            node_index,
+            Course::new(course.subject_prefix(), course.course_number()),
+        );
         self.course_name_to_index.insert(course.name(), node_index);
         if !self.course_group.contains_key(&course_group_key) {
             self.course_group
@@ -154,6 +158,7 @@ impl CourseGraphBuilder {
             requirements: g.requirements,
             course_name_to_index: g.course_name_to_index,
             graph: g.graph,
+            course_group: g.course_group,
         }
     }
 }
@@ -175,6 +180,16 @@ impl CourseGraph {
         } else {
             VertexType::REQUIREMENT
         }
+    }
+    pub fn course_group_satisfied(&self, node_index: NodeIndex, course_set: &Vec<String>) -> bool {
+        let node_key = self.courses.get(&node_index).unwrap().course_key();
+        for node in self.course_group.get(&node_key).unwrap() {
+            let target_course_name = self.courses.get(node).unwrap().name();
+            if !node.eq(&node_index) && course_set.contains(&target_course_name) {
+                return true;
+            }
+        }
+        return false;
     }
     pub fn requirement_satisfied(&self, node_index: NodeIndex, remain_degree: usize) -> bool {
         let init_degree = self

@@ -1,13 +1,24 @@
 #[derive(Debug)]
 pub struct Course {
-    course_name: String,
+    subject_prefix: String,
+    course_number: String,
 }
 
 impl Course {
-    pub fn new(name: String) -> Self {
-        Self { course_name: name }
+    pub fn new(subject_prefix: &str, course_number: &str) -> Self {
+        Self {
+            subject_prefix: String::from(subject_prefix),
+            course_number: String::from(course_number),
+        }
     }
-    pub fn name(&self) -> &str {
-        &self.course_name
+    pub fn name(&self) -> String {
+        format!("{} {}", &self.subject_prefix, &self.course_number)
+    }
+    pub fn course_key(&self) -> String {
+        format!(
+            "{}_{}",
+            &self.subject_prefix,
+            &self.course_number[self.course_number.len() - 2..]
+        )
     }
 }

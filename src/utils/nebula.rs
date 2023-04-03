@@ -32,7 +32,12 @@ impl NebulaCourse {
     pub fn name(&self) -> String {
         format!("{} {}", &self.subject_prefix, &self.course_number)
     }
-
+    pub fn subject_prefix(&self) -> &str {
+        &self.subject_prefix
+    }
+    pub fn course_number(&self) -> &str {
+        &self.course_number
+    }
     pub fn prerequisites(&self) -> &RequirementCollection {
         &self.prerequisites
     }

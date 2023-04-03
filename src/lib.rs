@@ -90,6 +90,7 @@ pub mod nebula {
                         }
                         if g.node_type(neighbor.index()) == VertexType::COURSE
                             && curr_state == NodeState::COREQUISITE
+                            && g.course_group_satisfied(neighbor, &bypasses)
                             && indegree[neighbor.index()] == 0
                         {
                             q.push_back((neighbor, NodeState::NEITHER));
@@ -109,7 +110,9 @@ pub mod nebula {
         for semester_set in taken_courses {
             for course in semester_set {
                 if let Some(course_index) = g.find_course_by_name(course) {
-                    if indegree[course_index.index()] == 0 {
+                    if g.course_group_satisfied(course_index, &semester_set)
+                        && indegree[course_index.index()] == 0
+                    {
                         fulfilled[course_index.index()] = true;
                         q.push_back((course_index, NodeState::NEITHER));
                     }
@@ -158,6 +161,7 @@ pub mod nebula {
                             }
                             if g.node_type(neighbor.index()) == VertexType::COURSE
                                 && curr_state == NodeState::COREQUISITE
+                                && g.course_group_satisfied(neighbor, &semester_set)
                                 && indegree[neighbor.index()] == 0
                             {
                                 q.push_back((neighbor, NodeState::NEITHER));
@@ -175,7 +179,9 @@ pub mod nebula {
             }
             for course in semester_set {
                 if let Some(course_index) = g.find_course_by_name(course) {
-                    if indegree[course_index.index()] > 0 {
+                    if !g.course_group_satisfied(course_index, &semester_set)
+                        || indegree[course_index.index()] > 0
+                    {
                         return Err(format!(
                             "Found course with unfulfilled pre/corequisite: {} (Need {} more requirement(s))",
                             &course,

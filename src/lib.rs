@@ -27,9 +27,9 @@ pub mod nebula {
     ) -> Result<(), String> {
         #[derive(PartialEq, Eq, PartialOrd, Ord, Copy, Clone)]
         enum NodeState {
-            PREREQUISITE,
-            COREQUISITE,
-            NEITHER,
+            Prerequisite,
+            Corequisite,
+            Neither,
         }
         let mut q: VecDeque<(NodeIndex, NodeState)> = VecDeque::new();
         let mut indegree: Vec<usize> = g
@@ -43,7 +43,7 @@ pub mod nebula {
             if let Some(course_index) = g.find_course_by_name(course) {
                 indegree[course_index.index()] = 0;
                 fulfilled[course_index.index()] = true;
-                q.push_back((course_index, NodeState::NEITHER));
+                q.push_back((course_index, NodeState::Neither));
             } else {
                 return Err(format!("Invalid course found: {}", course));
             }
@@ -51,7 +51,7 @@ pub mod nebula {
 
         while let Some((curr_node, curr_state)) = q.pop_front() {
             match curr_state {
-                NodeState::NEITHER => {
+                NodeState::Neither => {
                     assert_eq!(g.node_type(curr_node.index()), VertexType::COURSE);
                     let mut edges = g
                         .graph()
@@ -66,9 +66,9 @@ pub mod nebula {
                             && g.requirement_satisfied(neighbor, indegree[neighbor.index()])
                         {
                             if g.graph()[edge] == EdgeType::COREQUISITE {
-                                q.push_back((neighbor, NodeState::COREQUISITE));
+                                q.push_back((neighbor, NodeState::Corequisite));
                             } else {
-                                q.push_back((neighbor, NodeState::PREREQUISITE));
+                                q.push_back((neighbor, NodeState::Prerequisite));
                             }
                             fulfilled[neighbor.index()] = true;
                             indegree[neighbor.index()] = 0;
@@ -89,11 +89,11 @@ pub mod nebula {
                             indegree[neighbor.index()] -= 1;
                         }
                         if g.node_type(neighbor.index()) == VertexType::COURSE
-                            && curr_state == NodeState::COREQUISITE
-                            && g.course_group_satisfied(neighbor, &bypasses)
+                            && curr_state == NodeState::Corequisite
+                            && g.course_group_satisfied(neighbor, bypasses)
                             && indegree[neighbor.index()] == 0
                         {
-                            q.push_back((neighbor, NodeState::NEITHER));
+                            q.push_back((neighbor, NodeState::Neither));
                             fulfilled[neighbor.index()] = true;
                         } else if g.node_type(neighbor.index()) == VertexType::REQUIREMENT
                             && g.requirement_satisfied(neighbor, indegree[neighbor.index()])
@@ -110,11 +110,11 @@ pub mod nebula {
         for semester_set in taken_courses {
             for course in semester_set {
                 if let Some(course_index) = g.find_course_by_name(course) {
-                    if g.course_group_satisfied(course_index, &semester_set)
+                    if g.course_group_satisfied(course_index, semester_set)
                         && indegree[course_index.index()] == 0
                     {
                         fulfilled[course_index.index()] = true;
-                        q.push_back((course_index, NodeState::NEITHER));
+                        q.push_back((course_index, NodeState::Neither));
                     }
                 } else {
                     return Err(format!("Invalid course found: {}", course));
@@ -122,7 +122,7 @@ pub mod nebula {
             }
             while let Some((curr_node, curr_state)) = q.pop_front() {
                 match curr_state {
-                    NodeState::NEITHER => {
+                    NodeState::Neither => {
                         assert_eq!(g.node_type(curr_node.index()), VertexType::COURSE);
                         let mut edges = g
                             .graph()
@@ -137,9 +137,9 @@ pub mod nebula {
                                 && g.requirement_satisfied(neighbor, indegree[neighbor.index()])
                             {
                                 if g.graph()[edge] == EdgeType::COREQUISITE {
-                                    q.push_back((neighbor, NodeState::COREQUISITE));
+                                    q.push_back((neighbor, NodeState::Corequisite));
                                 } else {
-                                    q.push_back((neighbor, NodeState::PREREQUISITE));
+                                    q.push_back((neighbor, NodeState::Prerequisite));
                                 }
                                 fulfilled[neighbor.index()] = true;
                                 indegree[neighbor.index()] = 0;
@@ -160,11 +160,11 @@ pub mod nebula {
                                 indegree[neighbor.index()] -= 1;
                             }
                             if g.node_type(neighbor.index()) == VertexType::COURSE
-                                && curr_state == NodeState::COREQUISITE
-                                && g.course_group_satisfied(neighbor, &semester_set)
+                                && curr_state == NodeState::Corequisite
+                                && g.course_group_satisfied(neighbor, semester_set)
                                 && indegree[neighbor.index()] == 0
                             {
-                                q.push_back((neighbor, NodeState::NEITHER));
+                                q.push_back((neighbor, NodeState::Neither));
                                 fulfilled[neighbor.index()] = true;
                             } else if g.node_type(neighbor.index()) == VertexType::REQUIREMENT
                                 && g.requirement_satisfied(neighbor, indegree[neighbor.index()])
@@ -179,14 +179,14 @@ pub mod nebula {
             }
             for course in semester_set {
                 if let Some(course_index) = g.find_course_by_name(course) {
-                    if !g.course_group_satisfied(course_index, &semester_set)
+                    if !g.course_group_satisfied(course_index, semester_set)
                         || indegree[course_index.index()] > 0
                     {
                         return Err(format!("Found course with unsatisfied group: {}", &course));
                     }
                     if indegree[course_index.index()] > 0 {
                         return Err(format!(
-                            "Found course with unfulfilled pre/corequisite: {} (Need {} more requirement(s))",
+                            "Found course with unfulfilled pre/: {} (Need {} more requirement(s))",
                             &course,
                             &indegree[course_index.index()]
                         ));

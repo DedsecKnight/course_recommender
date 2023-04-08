@@ -112,7 +112,7 @@ impl CourseGraphBuilder {
                     .course_group
                     .get(root_course_group)
                     .unwrap()
-                    .contains(&course_index)
+                    .contains(course_index)
                 {
                     None
                 } else {
@@ -181,7 +181,7 @@ impl CourseGraph {
             VertexType::REQUIREMENT
         }
     }
-    pub fn course_group_satisfied(&self, node_index: NodeIndex, course_set: &Vec<String>) -> bool {
+    pub fn course_group_satisfied(&self, node_index: NodeIndex, course_set: &[String]) -> bool {
         let node_key = self.courses.get(&node_index).unwrap().course_key();
         for node in self.course_group.get(&node_key).unwrap() {
             let target_course_name = self.courses.get(node).unwrap().name();

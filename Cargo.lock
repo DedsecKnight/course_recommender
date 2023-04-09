@@ -458,7 +458,6 @@ dependencies = [
  "dotenv",
  "mongodb",
  "petgraph",
- "recur-fn",
  "rocket",
  "serde",
 ]
@@ -1694,12 +1693,6 @@ checksum = "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c"
 dependencies = [
  "getrandom",
 ]
-
-[[package]]
-name = "recur-fn"
-version = "2.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ddb239d0574f3f7a7f44da906a0484f1fc284f89cfbc4eca1895420dbf948201"
 
 [[package]]
 name = "redox_syscall"

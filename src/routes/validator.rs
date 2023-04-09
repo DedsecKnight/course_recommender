@@ -23,7 +23,7 @@ pub struct PrereqResponse {
 #[rocket::post("/", rocket::data = "<payload>")]
 pub fn index(course_graph: &State<CourseGraph>, payload: Json<PrereqData>) -> Json<PrereqResponse> {
     let semester_data: Vec<SemesterData> = payload.semester.to_owned();
-    match CourseRecommenderPipeline::new(&course_graph).process(
+    match CourseRecommenderPipeline::new(course_graph).process(
         semester_data.into_iter().map(|x| x.courses).collect(),
         payload.bypasses.to_owned(),
     ) {

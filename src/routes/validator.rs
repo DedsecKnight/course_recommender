@@ -1,7 +1,5 @@
-use crate::{
-    nebula::validate_and_remove_seminar_requirement,
-    nebula::validate_degree,
-    utils::{graph::CourseGraph, semester::SemesterData},
+use crate::utils::{
+    graph::CourseGraph, pipeline::CourseRecommenderPipeline, semester::SemesterData,
 };
 use rocket::{
     serde::{json::Json, Deserialize, Serialize},
@@ -24,20 +22,15 @@ pub struct PrereqResponse {
 
 #[rocket::post("/", rocket::data = "<payload>")]
 pub fn index(course_graph: &State<CourseGraph>, payload: Json<PrereqData>) -> Json<PrereqResponse> {
-    let semester_data: Vec<SemesterData> = payload.semester.clone();
-    match validate_and_remove_seminar_requirement(
-        semester_data.iter().map(|x| x.courses.clone()).collect(),
+    let semester_data: Vec<SemesterData> = payload.semester.to_owned();
+    match CourseRecommenderPipeline::new(&course_graph).process(
+        semester_data.into_iter().map(|x| x.courses).collect(),
+        payload.bypasses.to_owned(),
     ) {
-        Ok(course_sets) => match validate_degree(&course_sets, &payload.bypasses, course_graph) {
-            Ok(_) => Json(PrereqResponse {
-                is_valid: true,
-                invalid_reason: String::from(""),
-            }),
-            Err(err) => Json(PrereqResponse {
-                is_valid: false,
-                invalid_reason: err,
-            }),
-        },
+        Ok(_) => Json(PrereqResponse {
+            is_valid: true,
+            invalid_reason: String::from(""),
+        }),
         Err(err) => Json(PrereqResponse {
             is_valid: false,
             invalid_reason: err,

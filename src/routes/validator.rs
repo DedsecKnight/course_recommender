@@ -1,4 +1,5 @@
 use crate::{
+    nebula::validate_and_remove_seminar_requirement,
     nebula::validate_degree,
     utils::{graph::CourseGraph, semester::SemesterData},
 };
@@ -24,12 +25,19 @@ pub struct PrereqResponse {
 #[rocket::post("/", rocket::data = "<payload>")]
 pub fn index(course_graph: &State<CourseGraph>, payload: Json<PrereqData>) -> Json<PrereqResponse> {
     let semester_data: Vec<SemesterData> = payload.semester.clone();
-    let course_sets = semester_data.iter().map(|x| x.courses.clone()).collect();
-    match validate_degree(&course_sets, &payload.bypasses, course_graph) {
-        Ok(_) => Json(PrereqResponse {
-            is_valid: true,
-            invalid_reason: String::from(""),
-        }),
+    match validate_and_remove_seminar_requirement(
+        semester_data.iter().map(|x| x.courses.clone()).collect(),
+    ) {
+        Ok(course_sets) => match validate_degree(&course_sets, &payload.bypasses, course_graph) {
+            Ok(_) => Json(PrereqResponse {
+                is_valid: true,
+                invalid_reason: String::from(""),
+            }),
+            Err(err) => Json(PrereqResponse {
+                is_valid: false,
+                invalid_reason: err,
+            }),
+        },
         Err(err) => Json(PrereqResponse {
             is_valid: false,
             invalid_reason: err,

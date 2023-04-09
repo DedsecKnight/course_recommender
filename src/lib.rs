@@ -20,6 +20,40 @@ pub mod nebula {
             .map(|result| result.unwrap())
             .collect()
     }
+    pub fn validate_and_remove_seminar_requirement(
+        taken_courses: Vec<Vec<String>>,
+    ) -> Result<Vec<Vec<String>>, String> {
+        let mut ret: Vec<Vec<String>> = vec![];
+        let valid_courses = [
+            "ARHM 1100",
+            "ATCM 1100",
+            "BBSU 1100",
+            "BCOM 1300",
+            "BIS 1100",
+            "ECS 1100",
+            "EPPS 1110",
+            "NATS 1101",
+            "NATS 1142",
+            "UNIV 1100",
+        ];
+        let can_pair_seminar =
+            |course_name: &String| -> bool { valid_courses.iter().any(|x| *x == course_name) };
+        for course_set in taken_courses {
+            if course_set.iter().any(|x| x == "UNIV 1010")
+                ^ course_set.iter().any(|x| can_pair_seminar(x))
+            {
+                return Err(String::from("Missing corequisite for seminar requirement"));
+            } else {
+                ret.push(
+                    course_set
+                        .into_iter()
+                        .filter(|x| x != "UNIV 1010" && !valid_courses.iter().any(|y| *y == x))
+                        .collect(),
+                );
+            }
+        }
+        Ok(ret)
+    }
     pub fn validate_degree(
         taken_courses: &Vec<Vec<String>>,
         bypasses: &Vec<String>,
